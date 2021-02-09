@@ -98,9 +98,18 @@ func fetch() soup.Root {
 		log.Fatal(err)
 	}
 	doc := soup.HTMLParse(source)
-	links := doc.Find("div", "id", "comicLinks").FindAll("a")
-	for _, link := range links {
-		fmt.Println(link.Text(), "| Link :", link.Attrs()["href"])
+	trs := doc.Find("table", "class", "torrents").FindAll("td", "class", "torrenttr")
+	var res []string
+	for _, tr := range trs {
+
+		img := tr.Find("td", "class", "embedded").Find("img", "class", "pro_free")
+
+		if img.Error == nil {
+			link := tr.Find("td", "class", "embedded").Find("a")
+			fmt.Println(link.Attrs()["href"])
+			res = append(res, link.Attrs()["href"])
+		}
+
 	}
 	return doc
 }
