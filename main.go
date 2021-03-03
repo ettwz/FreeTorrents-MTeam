@@ -4,6 +4,9 @@ import (
 	"fmt"
 	"github.com/anaskhan96/soup"
 	"log"
+	"net/http"
+	"strconv"
+	"strings"
 )
 
 var siteName = "M-TEAM"
@@ -31,6 +34,8 @@ var userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (K
 
 // You don't need to define the variables shows below unless you couldn't download the torrents after defined the above one
 var referer = "https://tp.m-team.cc/login.php"
+var downloadURL = "https://tp.m-team.cc/download.php"
+var passKey = ""
 var host = "tp.m-team.cc"
 
 // You don't need to define the variables shows below unless you couldn't download the torrents after defined the above two
@@ -105,12 +110,41 @@ func fetch() soup.Root {
 		img := tr.Find("td", "class", "embedded").Find("img", "class", "pro_free")
 
 		if img.Error == nil {
+			span := tr.Find("td", "class", "embedded").Find("span")
+			if span.Pointer != nil {
+				date := strings.Split(span.Pointer.FirstChild.Data, "：")
+				dateValue := date[1]
+				if strings.Contains(dateValue, "日") {
+					num, err := strconv.Atoi(dateValue[0:1])
+					if err != nil || num < 4 {
+						continue
+					}
+				} else {
+					continue
+				}
+			}
+
+			sizeStr := tr.FindNextSibling().FindNextSibling().FindNextSibling().Pointer.FirstChild.Data
+			size, err := strconv.ParseFloat(sizeStr, 32)
+			if err != nil || size > 150 {
+				continue
+			}
+
 			link := tr.Find("td", "class", "embedded").Find("a")
 			fmt.Println(link.Attrs()["href"])
 			res = append(res, link.Attrs()["href"])
 		}
+	}
+
+	for _, detail := range res {
+		tmp := strings.Split(detail, "?")
+		tmp1 := strings.Split(tmp[1], "&")
+
+		downloadURL := downloadURL + "?" + tmp1[0] + "&passkey=" + passKey + "&https=1"
+		http.ServeFile()
 
 	}
+
 	return doc
 }
 
