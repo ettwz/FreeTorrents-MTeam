@@ -1,0 +1,6 @@
+siteCookie: YourSiteCookie
+passKey: YourPassKey
+torrentPath: /test/
+freeDays: 4
+# target file size. GB
+freeSize: 150
