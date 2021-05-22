@@ -1,5 +1,6 @@
 siteCookie: YourSiteCookie
 passKey: YourPassKey
+userAgent: YourUserAgent
 torrentPath: /test/
 freeDays: 4
 # target file size. GB

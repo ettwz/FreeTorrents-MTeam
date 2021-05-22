@@ -16,16 +16,17 @@ import (
 type Conf struct {
 	SiteCookie  string  `yaml:"siteCookie"`
 	PassKey     string  `yaml:"passKey"`
+	UserAgent   string  `yaml:"userAgent"`
 	TorrentPath string  `yaml:"torrentPath"`
 	FreeDays    int     `yaml:"freeDays"`
 	FreeSize    float64 `yaml:"freeSize"`
 }
 
-var siteUrl = "https://tp.m-team.cc/torrents.php"
-var userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/75.0.3770.100 Safari/537.36"
-var referer = "https://tp.m-team.cc/login.php"
-var downloadURL = "https://kp.m-team.cc/download.php"
-var host = "tp.m-team.cc"
+var host = "kp.m-team.cc"
+var baseUrl = "https://" + host
+var siteUrl = baseUrl + "/torrents.php"
+var referer = baseUrl + "/login.php"
+var downloadURL = baseUrl + "/download.php"
 
 // You don't need to define the variables shows below unless you couldn't download the torrents after defined the above two
 var upgradeInsecureRequests = ""
@@ -39,7 +40,6 @@ var contentType = ""
 var origin = ""
 
 var headers = map[string]string{
-	"User-Agent":                userAgent,
 	"Referer":                   referer,
 	"Host":                      host,
 	"accept":                    accept,
@@ -63,7 +63,7 @@ func main() {
 
 func fetch() soup.Root {
 	fmt.Println("Fetch Url", siteUrl)
-	soup.Headers = setHeader()
+	soup.Headers = setHeader(c)
 	soup.Cookie("tp", c.SiteCookie)
 
 	source, err := soup.Get(siteUrl)
@@ -119,13 +119,14 @@ func fetch() soup.Root {
 	return doc
 }
 
-func setHeader() map[string]string {
+func setHeader(c Conf) map[string]string {
 	var res = map[string]string{}
 	for s := range headers {
 		if headers[s] != "" {
 			res[s] = headers[s]
 		}
 	}
+	res["User-Agent"] = c.UserAgent
 	return res
 }
 
