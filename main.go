@@ -1,7 +1,7 @@
 package main
 
 import (
-	"fmt"
+	"flag"
 	"github.com/anaskhan96/soup"
 	"gopkg.in/yaml.v2"
 	"io"
@@ -11,6 +11,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 )
 
 type Conf struct {
@@ -54,21 +55,39 @@ var headers = map[string]string{
 }
 
 var c Conf
+var configFlag string
+
+var (
+	Info    *log.Logger
+	Warning *log.Logger
+	Error   *log.Logger
+)
+
+func init() {
+	flag.StringVar(&configFlag, "c", "conf.yaml", "config file path")
+	file, err := os.OpenFile("freeTorrent.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0666)
+	if err != nil {
+		log.Fatal(err)
+	}
+	Info = log.New(file, "INFO: ", log.Ldate|log.Ltime|log.Lshortfile)
+	Warning = log.New(file, "WARNING: ", log.Ldate|log.Ltime|log.Lshortfile)
+	Error = log.New(file, "ERROR: ", log.Ldate|log.Ltime|log.Lshortfile)
+}
 
 func main() {
-
+	flag.Parse()
 	c.getConf()
 	fetch()
 }
 
 func fetch() soup.Root {
-	fmt.Println("Fetch Url", siteUrl)
+	Info.Println(time.Now())
 	soup.Headers = setHeader(c)
 	soup.Cookie("tp", c.SiteCookie)
 
 	source, err := soup.Get(siteUrl)
 	if err != nil {
-		log.Fatal(err)
+		Error.Fatal(err)
 	}
 	doc := soup.HTMLParse(source)
 	trs := doc.Find("table", "class", "torrents").FindAll("td", "class", "torrenttr")
@@ -92,6 +111,10 @@ func fetch() soup.Root {
 				}
 			}
 
+			sizeUnit := tr.FindNextSibling().FindNextSibling().FindNextSibling().Pointer.LastChild.Data
+			if sizeUnit != "GB" {
+				continue
+			}
 			sizeStr := tr.FindNextSibling().FindNextSibling().FindNextSibling().Pointer.FirstChild.Data
 			size, err := strconv.ParseFloat(sizeStr, 32)
 			if err != nil || size > c.FreeSize {
@@ -99,7 +122,7 @@ func fetch() soup.Root {
 			}
 
 			link := tr.Find("td", "class", "embedded").Find("a")
-			fmt.Println(link.Attrs()["href"])
+			Info.Println(link.Attrs()["href"])
 			res = append(res, link.Attrs()["href"])
 		}
 	}
@@ -114,7 +137,7 @@ func fetch() soup.Root {
 		if err != nil {
 			panic(err)
 		}
-		fmt.Println("Downloaded: " + downloadURL)
+		Info.Println("Downloaded: " + downloadURL)
 	}
 	return doc
 }
@@ -154,14 +177,14 @@ func DownloadFile(filepath string, url string) error {
 }
 
 func (c *Conf) getConf() *Conf {
-	yamlFile, err := ioutil.ReadFile("conf.yaml")
+	yamlFile, err := ioutil.ReadFile(configFlag)
 	if err != nil {
-		log.Printf("yamlFile.Get err #%v", err)
+		Error.Printf("yamlFile.Get err #%v", err)
 	}
 
 	err = yaml.Unmarshal(yamlFile, c)
 	if err != nil {
-		log.Fatalf("Unmarshal: %v", err)
+		Error.Fatalf("Unmarshal: %v", err)
 	}
 	return c
 }
