@@ -112,11 +112,16 @@ func fetch() soup.Root {
 			}
 
 			sizeUnit := tr.FindNextSibling().FindNextSibling().FindNextSibling().Pointer.LastChild.Data
-			if sizeUnit != "GB" {
-				continue
-			}
 			sizeStr := tr.FindNextSibling().FindNextSibling().FindNextSibling().Pointer.FirstChild.Data
 			size, err := strconv.ParseFloat(sizeStr, 32)
+
+			switch sizeUnit {
+			case "MB":
+				size = size / 1024
+			case "TB":
+				size = size * 1024
+			}
+
 			if err != nil || size > c.FreeSize {
 				continue
 			}
