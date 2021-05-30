@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -77,7 +78,20 @@ func init() {
 func main() {
 	flag.Parse()
 	c.getConf()
+	delete()
 	fetch()
+}
+
+func delete() {
+	files, err := filepath.Glob(c.TorrentPath + "*")
+	if err != nil {
+		panic(err)
+	}
+	for _, f := range files {
+		if err := os.Remove(f); err != nil {
+			panic(err)
+		}
+	}
 }
 
 func fetch() soup.Root {
