@@ -10,18 +10,26 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
 )
 
 type Conf struct {
-	SiteCookie  string  `yaml:"siteCookie"`
-	PassKey     string  `yaml:"passKey"`
-	UserAgent   string  `yaml:"userAgent"`
-	TorrentPath string  `yaml:"torrentPath"`
-	FreeDays    int     `yaml:"freeDays"`
-	FreeSize    float64 `yaml:"freeSize"`
+	SiteCookie  string   `yaml:"siteCookie"`
+	PassKey     string   `yaml:"passKey"`
+	UserAgent   string   `yaml:"userAgent"`
+	TorrentPath string   `yaml:"torrentPath"`
+	FreeDays    int      `yaml:"freeDays"`
+	FreeSize    float64  `yaml:"freeSize"`
+	BlockList   []string `yaml:"blockList"`
+}
+
+type Torrent struct {
+	ID   string
+	Name string
+	Size float64
 }
 
 var host = "kp.m-team.cc"
@@ -78,11 +86,11 @@ func init() {
 func main() {
 	flag.Parse()
 	c.getConf()
-	delete()
-	fetch()
+	deleteTorrents()
+	fetchTorrents()
 }
 
-func delete() {
+func deleteTorrents() {
 	files, err := filepath.Glob(c.TorrentPath + "*")
 	if err != nil {
 		panic(err)
@@ -94,7 +102,7 @@ func delete() {
 	}
 }
 
-func fetch() soup.Root {
+func fetchTorrents() soup.Root {
 	Info.Println(time.Now())
 	soup.Headers = setHeader(c)
 	soup.Cookie("tp", c.SiteCookie)
@@ -105,7 +113,7 @@ func fetch() soup.Root {
 	}
 	doc := soup.HTMLParse(source)
 	trs := doc.Find("table", "class", "torrents").FindAll("td", "class", "torrenttr")
-	var res []string
+	var res []*Torrent
 	for _, tr := range trs {
 
 		img := tr.Find("td", "class", "embedded").Find("img", "class", "pro_free")
@@ -136,27 +144,54 @@ func fetch() soup.Root {
 				size = size * 1024
 			}
 
-			if err != nil || size > c.FreeSize {
+			if err != nil{
 				continue
 			}
 
+			//torrent id
 			link := tr.Find("td", "class", "embedded").Find("a")
-			Info.Println(link.Attrs()["href"])
-			res = append(res, link.Attrs()["href"])
+			//href will be like "details.php?id=523177&hit=1"
+			href := link.Attrs()["href"]
+			tmp := strings.Split(href, "=")
+			tmp1 := strings.Split(tmp[1], "&")
+			id := tmp1[0]
+
+			//torrent name
+			title := link.Attrs()["title"]
+
+			Info.Println(id)
+			Info.Println(title)
+			t := NewTorrent(id, title, size)
+
+			res = append(res, t)
 		}
 	}
 
-	for _, detail := range res {
-		tmp := strings.Split(detail, "?")
-		tmp1 := strings.Split(tmp[1], "&")
-		id := strings.Split(tmp1[0], "=")
+	for _, t := range res {
+		if t.Size > c.FreeSize {
+			continue
+		}
 
-		downloadURL := downloadURL + "?" + tmp1[0] + "&passkey=" + c.PassKey + "&https=1"
-		err := DownloadFile(c.TorrentPath+"[M-TEAM]"+id[1]+".torrent", downloadURL)
+		matched := false
+		for _, b := range c.BlockList {
+			matched, _ = regexp.MatchString(b, t.Name)
+			if matched {
+				Info.Println("Matched: " + b)
+				break
+			}
+		}
+		if matched {
+			continue
+		}
+
+		id := t.ID
+		torrentURL := downloadURL + "?id=" + id + "&passkey=" + c.PassKey + "&https=1"
+
+		err := DownloadFile(c.TorrentPath+"[M-TEAM]"+t.Name+".torrent", torrentURL)
 		if err != nil {
 			panic(err)
 		}
-		Info.Println("Downloaded: " + downloadURL)
+		Info.Println("Downloaded: " + torrentURL)
 	}
 	return doc
 }
@@ -206,4 +241,12 @@ func (c *Conf) getConf() *Conf {
 		Error.Fatalf("Unmarshal: %v", err)
 	}
 	return c
+}
+
+func NewTorrent(id string, name string, size float64) *Torrent {
+	t := new(Torrent)
+	t.ID = id
+	t.Name = name
+	t.Size = size
+	return t
 }
