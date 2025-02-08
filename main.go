@@ -1,9 +1,10 @@
 package main
 
 import (
+	"bytes"
+	"encoding/json"
 	"flag"
-	"github.com/anaskhan96/soup"
-	"gopkg.in/yaml.v2"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"log"
@@ -12,14 +13,15 @@ import (
 	"path/filepath"
 	"regexp"
 	"strconv"
-	"strings"
 	"time"
+
+	"mime/multipart"
+
+	"gopkg.in/yaml.v2"
 )
 
 type Conf struct {
-	SiteCookie  string   `yaml:"siteCookie"`
-	PassKey     string   `yaml:"passKey"`
-	UserAgent   string   `yaml:"userAgent"`
+	APIKey      string   `yaml:"apiKey"`
 	TorrentPath string   `yaml:"torrentPath"`
 	FreeDays    int      `yaml:"freeDays"`
 	FreeSize    float64  `yaml:"freeSize"`
@@ -32,37 +34,46 @@ type Torrent struct {
 	Size float64
 }
 
-var host = "kp.m-team.cc"
-var baseUrl = "https://" + host
-var siteUrl = baseUrl + "/torrents.php"
-var referer = baseUrl + "/login.php"
-var downloadURL = baseUrl + "/download.php"
-
-// You don't need to define the variables shows below unless you couldn't download the torrents after defined the above two
-var upgradeInsecureRequests = ""
-var dnt = ""
-var acceptLanguage = ""
-var acceptEncoding = ""
-var accept = ""
-var cacheControl = ""
-var contentLength = ""
-var contentType = ""
-var origin = ""
-
-var headers = map[string]string{
-	"Referer":                   referer,
-	"Host":                      host,
-	"accept":                    accept,
-	"accept-language":           acceptLanguage,
-	"accept-encoding":           acceptEncoding,
-	"origin":                    origin,
-	"dnt":                       dnt,
-	"upgrade-insecure-requests": upgradeInsecureRequests,
-	"cache-control":             cacheControl,
-	"content-length":            contentLength,
-	"content-type":              contentType,
+type DlTokenResponse struct {
+	Message string `json:"message"`
+	Data    string `json:"data"`
+	Code    string `json:"code"`
 }
 
+type TorrentSearchRequest struct {
+	PageNumber int    `json:"pageNumber"`
+	PageSize   int    `json:"pageSize"`
+	Mode       string `json:"mode"`
+	Categories []int  `json:"categories"`
+	Visible    int    `json:"visible"`
+}
+
+type TorrentSearchResponse struct {
+	Message string          `json:"message"`
+	Data    TorrentListData `json:"data"`
+	Code    string          `json:"code"`
+}
+
+type TorrentListData struct {
+	PageNumber string        `json:"pageNumber"`
+	PageSize   string        `json:"pageSize"`
+	Total      string        `json:"total"`
+	TotalPages string        `json:"totalPages"`
+	Data       []TorrentInfo `json:"data"`
+}
+
+type TorrentInfo struct {
+	ID     string `json:"id"`
+	Name   string `json:"name"`
+	Size   string `json:"size"`
+	Status struct {
+		Discount        string `json:"discount"`
+		DiscountEndTime string `json:"discountEndTime"`
+	} `json:"status"`
+}
+
+var host = "api2.m-team.cc"
+var baseUrl = "https://" + host
 var c Conf
 var configFlag string
 
@@ -102,68 +113,67 @@ func deleteTorrents() {
 	}
 }
 
-func fetchTorrents() soup.Root {
+// 在 fetchTorrents 函数中修改大小转换部分
+func fetchTorrents() {
 	Info.Println(time.Now())
-	soup.Headers = setHeader(c)
-	soup.Cookie("tp", c.SiteCookie)
 
-	source, err := soup.Get(siteUrl)
+	searchReq := TorrentSearchRequest{
+		PageNumber: 1,
+		PageSize:   100,
+		Mode:       "normal",
+		Categories: []int{},
+		Visible:    1,
+	}
+
+	jsonData, err := json.Marshal(searchReq)
 	if err != nil {
 		Error.Fatal(err)
 	}
-	doc := soup.HTMLParse(source)
-	trs := doc.Find("table", "class", "torrents").FindAll("td", "class", "torrenttr")
+
+	req, err := http.NewRequest("POST", baseUrl+"/api/torrent/search", bytes.NewBuffer(jsonData))
+	if err != nil {
+		Error.Fatal(err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("x-api-key", c.APIKey)
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		Error.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	var searchResp TorrentSearchResponse
+	if err := json.NewDecoder(resp.Body).Decode(&searchResp); err != nil {
+		Error.Fatal(err)
+	}
+
 	var res []*Torrent
-	for _, tr := range trs {
-
-		img := tr.Find("td", "class", "embedded").Find("img", "class", "pro_free")
-
-		if img.Error == nil {
-			span := tr.Find("td", "class", "embedded").Find("span")
-			if span.Pointer != nil {
-				date := strings.Split(span.Pointer.FirstChild.Data, "：")
-				dateValue := date[1]
-				if strings.Contains(dateValue, "日") {
-					num, err := strconv.Atoi(dateValue[0:1])
-					if err != nil || num < c.FreeDays {
-						continue
-					}
-				} else {
-					continue
-				}
+	for _, t := range searchResp.Data.Data {
+		if t.Status.Discount == "FREE" {
+			// 如果discountEndTime为空则代表永久免费
+			var expireTime time.Time
+			if t.Status.DiscountEndTime == "" {
+				expireTime = time.Now().AddDate(100, 0, 0) // 设置一个很久以后的时间作为到期时间
+			} else {
+				expireTime, err = time.Parse("2006-01-02 15:04:05", t.Status.DiscountEndTime)
 			}
-
-			sizeUnit := tr.FindNextSibling().FindNextSibling().FindNextSibling().Pointer.LastChild.Data
-			sizeStr := tr.FindNextSibling().FindNextSibling().FindNextSibling().Pointer.FirstChild.Data
-			size, err := strconv.ParseFloat(sizeStr, 32)
-
-			switch sizeUnit {
-			case "MB":
-				size = size / 1024
-			case "TB":
-				size = size * 1024
-			}
-
-			if err != nil{
+			if err != nil {
 				continue
 			}
 
-			//torrent id
-			link := tr.Find("td", "class", "embedded").Find("a")
-			//href will be like "details.php?id=523177&hit=1"
-			href := link.Attrs()["href"]
-			tmp := strings.Split(href, "=")
-			tmp1 := strings.Split(tmp[1], "&")
-			id := tmp1[0]
+			daysLeft := int(time.Until(expireTime).Hours() / 24)
+			if daysLeft < c.FreeDays {
+				continue
+			}
 
-			//torrent name
-			title := link.Attrs()["title"]
+			size, _ := strconv.ParseFloat(t.Size, 64)
+			sizeGB := size / (1024 * 1024 * 1024)
 
-			Info.Println(id)
-			Info.Println(title)
-			t := NewTorrent(id, title, size)
-
-			res = append(res, t)
+			torrent := NewTorrent(t.ID, t.Name, sizeGB)
+			res = append(res, torrent)
 		}
 	}
 
@@ -185,48 +195,59 @@ func fetchTorrents() soup.Root {
 		}
 
 		id := t.ID
-		torrentURL := downloadURL + "?id=" + id + "&passkey=" + c.PassKey + "&https=1"
-
-		err := DownloadFile(c.TorrentPath+"[M-TEAM]"+t.Name+".torrent", torrentURL)
+		err := DownloadFile(c.TorrentPath+"[M-TEAM]"+t.Name+".torrent", id)
 		if err != nil {
 			panic(err)
 		}
-		Info.Println("Downloaded: " + torrentURL)
+		Info.Println("Downloaded torrent: " + t.Name)
 	}
-	return doc
 }
 
-func setHeader(c Conf) map[string]string {
-	var res = map[string]string{}
-	for s := range headers {
-		if headers[s] != "" {
-			res[s] = headers[s]
-		}
+func DownloadFile(filepath string, torrentId string) error {
+	// 构造获取下载链接的请求
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	_ = writer.WriteField("id", torrentId)
+	writer.Close()
+
+	req, err := http.NewRequest("POST", baseUrl+"/api/torrent/genDlToken", body)
+	if err != nil {
+		return err
 	}
-	res["User-Agent"] = c.UserAgent
-	return res
-}
 
-// DownloadFile will download a url to a local file. It's efficient because it will
-// write as it downloads and not load the whole file into memory.
-func DownloadFile(filepath string, url string) error {
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	req.Header.Set("x-api-key", c.APIKey)
 
-	// Get the data
-	resp, err := http.Get(url)
+	client := &http.Client{}
+	resp, err := client.Do(req)
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
 
-	// Create the file
+	var tokenResp DlTokenResponse
+	if err := json.NewDecoder(resp.Body).Decode(&tokenResp); err != nil {
+		return err
+	}
+
+	if tokenResp.Code != "0" {
+		return fmt.Errorf("get download token failed: %s", tokenResp.Message)
+	}
+
+	// 使用获取到的下载链接下载种子文件
+	dlResp, err := http.Get(tokenResp.Data)
+	if err != nil {
+		return err
+	}
+	defer dlResp.Body.Close()
+
 	out, err := os.Create(filepath)
 	if err != nil {
 		return err
 	}
 	defer out.Close()
 
-	// Write the body to file
-	_, err = io.Copy(out, resp.Body)
+	_, err = io.Copy(out, dlResp.Body)
 	return err
 }
 

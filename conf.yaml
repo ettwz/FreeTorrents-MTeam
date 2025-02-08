@@ -1,6 +1,4 @@
-siteCookie: YourSiteCookie
-passKey: YourPassKey
-userAgent: YourUserAgent
+apiKey: YourAPIKey
 torrentPath: /test/
 freeDays: 4
 # target file size. GB
