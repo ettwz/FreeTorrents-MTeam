@@ -18,3 +18,4 @@
 *.torrent
 
 .DS_Store
+.vscode

@@ -23,6 +23,7 @@ import (
 type Conf struct {
 	APIKey      string   `yaml:"apiKey"`
 	TorrentPath string   `yaml:"torrentPath"`
+	UserAgent   string   `yaml:"userAgent"`
 	FreeDays    int      `yaml:"freeDays"`
 	FreeSize    float64  `yaml:"freeSize"`
 	BlockList   []string `yaml:"blockList"`
@@ -137,6 +138,7 @@ func fetchTorrents() {
 
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("x-api-key", c.APIKey)
+	req.Header.Set("User-Agent", c.UserAgent)
 
 	client := &http.Client{}
 	resp, err := client.Do(req)
@@ -217,6 +219,7 @@ func DownloadFile(filepath string, torrentId string) error {
 
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 	req.Header.Set("x-api-key", c.APIKey)
+	req.Header.Set("User-Agent", c.UserAgent)
 
 	client := &http.Client{}
 	resp, err := client.Do(req)
@@ -235,7 +238,16 @@ func DownloadFile(filepath string, torrentId string) error {
 	}
 
 	// 使用获取到的下载链接下载种子文件
-	dlResp, err := http.Get(tokenResp.Data)
+	dlReq, err := http.NewRequest("GET", tokenResp.Data, nil)
+	if err != nil {
+		return err
+	}
+
+	// 设置请求头
+	dlReq.Header.Set("User-Agent", c.UserAgent)
+
+	// 发送请求
+	dlResp, err := client.Do(dlReq)
 	if err != nil {
 		return err
 	}
