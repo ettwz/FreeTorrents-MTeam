@@ -73,7 +73,7 @@ type TorrentInfo struct {
 	} `json:"status"`
 }
 
-var host = "api2.m-team.cc"
+var host = "api.m-team.cc"
 var baseUrl = "https://" + host
 var c Conf
 var configFlag string
