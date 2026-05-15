@@ -120,7 +120,7 @@ func fetchTorrents() {
 
 	searchReq := TorrentSearchRequest{
 		PageNumber: 1,
-		PageSize:   100,
+		PageSize:   200,
 		Mode:       "normal",
 		Categories: []int{},
 		Visible:    1,
