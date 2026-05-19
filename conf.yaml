@@ -1,6 +1,7 @@
 apiKey: YourAPIKey
 torrentPath: /test/
 userAgent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36
+pageSize: 100
 freeDays: 4
 # min target file size. GB. 0 means disabled.
 freeSizeMin: 0
@@ -74,3 +75,15 @@ blockList:
   - DouLuo
   - kbps
   - Blu-ray Audio
+  - 主播
+  - 有声
+  - 演播
+  - Chinese Basketball Association
+  - Chinese.Basketball.Association
+  - FLAC
+  - NBC
+  - Audiobook
+  - Table.Tennis
+  - OG2016
+  - TT
+  - TTW

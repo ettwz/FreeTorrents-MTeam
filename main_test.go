@@ -74,6 +74,26 @@ func TestSizeBlocked(t *testing.T) {
 	}
 }
 
+func TestConfiguredPageSize(t *testing.T) {
+	tests := []struct {
+		name     string
+		pageSize int
+		want     int
+	}{
+		{name: "configured", pageSize: 50, want: 50},
+		{name: "zero uses default", pageSize: 0, want: defaultPageSize},
+		{name: "negative uses default", pageSize: -1, want: defaultPageSize},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := configuredPageSize(tt.pageSize); got != tt.want {
+				t.Fatalf("configuredPageSize(%d) = %d, want %d", tt.pageSize, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestConfUnmarshalCategoryBlockList(t *testing.T) {
 	raw := []byte("categoryBlockList:\n  - 442\n  - \"444\"\n")
 

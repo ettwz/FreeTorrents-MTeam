@@ -25,6 +25,7 @@ type Conf struct {
 	APIKey            string         `yaml:"apiKey"`
 	TorrentPath       string         `yaml:"torrentPath"`
 	UserAgent         string         `yaml:"userAgent"`
+	PageSize          int            `yaml:"pageSize"`
 	FreeDays          int            `yaml:"freeDays"`
 	FreeSizeMin       float64        `yaml:"freeSizeMin"`
 	FreeSize          float64        `yaml:"freeSize"`
@@ -116,6 +117,9 @@ func (s *StringNumber) UnmarshalYAML(unmarshal func(interface{}) error) error {
 
 var host = "api.m-team.cc"
 var baseUrl = "https://" + host
+
+const defaultPageSize = 200
+
 var c Conf
 var configFlag string
 
@@ -161,7 +165,7 @@ func fetchTorrents() {
 
 	searchReq := TorrentSearchRequest{
 		PageNumber: 1,
-		PageSize:   200,
+		PageSize:   configuredPageSize(c.PageSize),
 		Mode:       "normal",
 		Categories: []int{},
 		Visible:    1,
@@ -345,6 +349,13 @@ func sizeBlocked(size float64, minSize float64, maxSize float64) bool {
 		return true
 	}
 	return false
+}
+
+func configuredPageSize(pageSize int) int {
+	if pageSize > 0 {
+		return pageSize
+	}
+	return defaultPageSize
 }
 
 func NewTorrent(id string, name string, size float64, category string) *Torrent {
