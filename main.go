@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strconv"
+	"strings"
 	"time"
 
 	"mime/multipart"
@@ -21,18 +22,21 @@ import (
 )
 
 type Conf struct {
-	APIKey      string   `yaml:"apiKey"`
-	TorrentPath string   `yaml:"torrentPath"`
-	UserAgent   string   `yaml:"userAgent"`
-	FreeDays    int      `yaml:"freeDays"`
-	FreeSize    float64  `yaml:"freeSize"`
-	BlockList   []string `yaml:"blockList"`
+	APIKey            string         `yaml:"apiKey"`
+	TorrentPath       string         `yaml:"torrentPath"`
+	UserAgent         string         `yaml:"userAgent"`
+	FreeDays          int            `yaml:"freeDays"`
+	FreeSizeMin       float64        `yaml:"freeSizeMin"`
+	FreeSize          float64        `yaml:"freeSize"`
+	BlockList         []string       `yaml:"blockList"`
+	CategoryBlockList []StringNumber `yaml:"categoryBlockList"`
 }
 
 type Torrent struct {
-	ID   string
-	Name string
-	Size float64
+	ID       string
+	Name     string
+	Size     float64
+	Category string
 }
 
 type DlTokenResponse struct {
@@ -64,13 +68,50 @@ type TorrentListData struct {
 }
 
 type TorrentInfo struct {
-	ID     string `json:"id"`
-	Name   string `json:"name"`
-	Size   string `json:"size"`
-	Status struct {
+	ID       string       `json:"id"`
+	Name     string       `json:"name"`
+	Size     string       `json:"size"`
+	Category StringNumber `json:"category"`
+	Status   struct {
 		Discount        string `json:"discount"`
 		DiscountEndTime string `json:"discountEndTime"`
 	} `json:"status"`
+}
+
+type StringNumber string
+
+func (s *StringNumber) UnmarshalJSON(data []byte) error {
+	value := strings.TrimSpace(string(data))
+	if value == "null" {
+		*s = ""
+		return nil
+	}
+
+	unquoted, err := strconv.Unquote(value)
+	if err == nil {
+		*s = StringNumber(unquoted)
+		return nil
+	}
+
+	*s = StringNumber(value)
+	return nil
+}
+
+func (s *StringNumber) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	var value interface{}
+	if err := unmarshal(&value); err != nil {
+		return err
+	}
+
+	switch v := value.(type) {
+	case nil:
+		*s = ""
+	case string:
+		*s = StringNumber(v)
+	default:
+		*s = StringNumber(fmt.Sprint(v))
+	}
+	return nil
 }
 
 var host = "api.m-team.cc"
@@ -174,13 +215,19 @@ func fetchTorrents() {
 			size, _ := strconv.ParseFloat(t.Size, 64)
 			sizeGB := size / (1024 * 1024 * 1024)
 
-			torrent := NewTorrent(t.ID, t.Name, sizeGB)
+			torrent := NewTorrent(t.ID, t.Name, sizeGB, string(t.Category))
 			res = append(res, torrent)
 		}
 	}
 
 	for _, t := range res {
-		if t.Size > c.FreeSize {
+		if sizeBlocked(t.Size, c.FreeSizeMin, c.FreeSize) {
+			Info.Println("Matched size: " + strconv.FormatFloat(t.Size, 'f', 2, 64) + " GB")
+			continue
+		}
+
+		if categoryBlocked(t.Category, c.CategoryBlockList) {
+			Info.Println("Matched category: " + t.Category)
 			continue
 		}
 
@@ -276,10 +323,35 @@ func (c *Conf) getConf() *Conf {
 	return c
 }
 
-func NewTorrent(id string, name string, size float64) *Torrent {
+func categoryBlocked(category string, blockList []StringNumber) bool {
+	category = strings.TrimSpace(category)
+	if category == "" {
+		return false
+	}
+
+	for _, blockedCategory := range blockList {
+		if category == strings.TrimSpace(string(blockedCategory)) {
+			return true
+		}
+	}
+	return false
+}
+
+func sizeBlocked(size float64, minSize float64, maxSize float64) bool {
+	if minSize > 0 && size < minSize {
+		return true
+	}
+	if maxSize > 0 && size > maxSize {
+		return true
+	}
+	return false
+}
+
+func NewTorrent(id string, name string, size float64, category string) *Torrent {
 	t := new(Torrent)
 	t.ID = id
 	t.Name = name
 	t.Size = size
+	t.Category = category
 	return t
 }

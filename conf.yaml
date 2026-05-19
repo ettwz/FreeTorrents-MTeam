@@ -2,8 +2,12 @@ apiKey: YourAPIKey
 torrentPath: /test/
 userAgent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36
 freeDays: 4
-# target file size. GB
+# min target file size. GB. 0 means disabled.
+freeSizeMin: 0
+# max target file size. GB. 0 means disabled.
 freeSize: 150
+# category ids to skip, exact match. e.g. ["442"]
+categoryBlockList: []
 blockList:
   - NBA
   - Serie A
